@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Terraform local state and provider cache
+.terraform/
+*.tfstate
+*.tfstate.*

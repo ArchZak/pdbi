@@ -1,0 +1,28 @@
+[workspace]
+name = "pdbi"
+version = "0.1.0"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "linux-64"]
+
+[dependencies]
+python = "3.12.*"
+pyarrow = "==21.0.0"
+boto3 = ">=1.40,<2"
+
+[tasks]
+pipeline = "python pipeline.py"
+
+[target.linux-64.pypi-dependencies]
+awslambdaric = ">=3,<4"
+
+[feature.test.tasks]
+test = "python -m unittest discover -s tests -v"
+
+[feature.test.dependencies]
+moto = ">=5.1,<6"
+
+[environments]
+test = ["test"]
+
+[pypi-dependencies]
+awscrt = "==0.38.0"

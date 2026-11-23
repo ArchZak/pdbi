@@ -1,0 +1,9 @@
+[
+  [
+    {"id":"DEMO-P1_1","organism":9606,"sequence":"macdefg"},
+    {"id":"DEMO-P2_1","organism":9606,"sequence":"ACD","parent_id":"DEMO-U1"}
+  ],
+  [
+    {"id":"DEMO-P1_1","organism":9606,"sequence":"macdefg"}
+  ]
+]

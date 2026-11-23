@@ -1,0 +1,10 @@
+[
+  [
+    {"id":"DEMO-U1","organism":9606,"sequence":"MA CDEFG"},
+    {"id":"DEMO-MOUSE","organism":10090,"sequence":"MACDEFG"}
+  ],
+  [
+    {"id":"DEMO-U2","organism":9606,"sequence":"WACDW"},
+    {"id":"DEMO-OTHER","organism":9606,"sequence":"MQQQQ"}
+  ]
+]

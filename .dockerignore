@@ -1,0 +1,7 @@
+**
+!pixi.toml
+!pixi.lock
+!pipeline.py
+!cloud_exports.py
+!cloud_ingest.py
+!live_sources.py
