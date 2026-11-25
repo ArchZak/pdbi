@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Query workspace · pdbi</title><link rel="stylesheet" href="/app.css"><script type="module" src="/app.js"></script></head>
+<body><header><div class="bar"><strong class="brand">pdbi<span>.</span></strong><span class="workspace">Query workspace</span><span class="local">Local session</span></div></header>
+<main><div class="intro"><h1>Protein query</h1><p>Search UniProt and PDB by source organism and sequence motif.</p></div>
+<div class="layout"><section class="card"><h2>Query builder</h2>
+<form id="wizard"><label for="prompt">Describe your query</label><textarea id="prompt" rows="2" required>Find human proteins containing ACD</textarea>
+<button class="secondary" type="submit">Draft with wizard</button><p id="draft-msg" role="status"></p></form>
+<form id="manual"><h3>Review query</h3><p class="hint">Edit these fields directly or fill them with the wizard.</p>
+<div class="fields"><label>Organism taxon ID<input id="organism" inputmode="numeric" required value="9606"></label><label>Sequence motif<input id="motif" required value="ACD" spellcheck="false"></label></div>
+<button type="submit" class="primary">Run query <span aria-hidden="true">→</span></button><p id="run-msg" role="status"></p></form></section>
+<aside class="card"><div class="result-head"><h2>Run results</h2><span id="status">Idle</span></div>
+<p id="detail" role="status">Run a query to see source progress and download the reconciled sequences.</p>
+<div class="source"><strong>UniProt</strong><span id="uniprot">Waiting</span></div>
+<div class="source"><strong>PDB</strong><span id="pdb">Waiting</span></div>
+<div class="downloads"><button data-format="parquet" disabled>Download Parquet</button><button data-format="csv" disabled>Download CSV</button><button id="resume" hidden>Resume run</button></div>
+<p id="download-msg" role="status"></p>
+<div class="note"><strong>Fixture data</strong><p>The sample query returns three distinct sequences. Runs are kept for this server session.</p></div>
+</aside></div></main></body></html>

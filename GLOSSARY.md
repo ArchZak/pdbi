@@ -21,3 +21,7 @@ The reconciled dataset produced by a completed query run. Researchers can downlo
 **Resume**
 
 Continue an interrupted query run using its saved progress and original query.
+
+**Query draft**
+
+A structured query under review, before the researcher confirms it for execution.

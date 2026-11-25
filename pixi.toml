@@ -16,6 +16,7 @@ pipeline = "python pipeline.py"
 awslambdaric = ">=3,<4"
 
 [feature.test.tasks]
+dev = "python dev_server.py --open"
 test = "python -m unittest discover -s tests -v"
 
 [feature.test.dependencies]

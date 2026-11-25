@@ -5,3 +5,4 @@
 !cloud_exports.py
 !cloud_ingest.py
 !live_sources.py
+!query_api.py

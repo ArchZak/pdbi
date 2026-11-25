@@ -1,6 +1,32 @@
 # pdbi
 CS1660 Project
 
+## Local browser workspace
+
+From the repository root run `pixi run dev`. The fixture workspace opens at
+http://127.0.0.1:8765. For headless use or a different port, run
+`pixi run -e test python dev_server.py --port 8766`.
+
+Choose **Draft with wizard**, review taxon 9606 and motif ACD, then **Run query**.
+The manual form uses the same fields. Once both sources finish, download Parquet
+or CSV. The sample yields three distinct sequences. Ctrl-C ends the session
+and clears emulated runs. Downloaded files stay on your machine.
+
+The loopback server supplies a fixed development identity, dispatches to the
+shared query API, and processes fixture pages through the ingestion and export
+workers with Moto S3 and SQS. Local downloads stream the saved object after
+the API verifies access. No AWS account or model key is required.
+
+### Plug in a wizard
+
+The server loads `wizard_provider:draft_query` by default. To use your own
+Python function, set `PDBI_WIZARD_PROVIDER=my_module:draft_query` when starting
+the server. Put the module on the Python import path. The function accepts a
+plain string and returns either `{"organism": 9606, "motif": "ACD"}` or
+`{"clarification": "Which organism should I search?"}`. The researcher can revise
+the prompt and draft again. Keep model credentials in the server environment.
+The browser sends proposed fields through shared validation and waits for Run.
+
 ## Local query pipeline
 
 Run from the repository root with Pixi on Apple Silicon macOS or x86-64 Linux.
@@ -93,3 +119,41 @@ dead-letter event. Once both sources finish, a finalizer reconciles only their
 successful attempts and publishes the saved Parquet. Finalization uses Lambda's
 temporary disk for the parts, SQLite index, and export. Very large runs can
 exceed its disk or time budget.
+
+## Frontend and wizard query API
+
+Enable the HTTP API by supplying the pipeline module's optional `query_auth`
+object with `issuer` (Cognito user pool issuer URL), `audience` (app client ID),
+and `origins` (browser origins). The module exports `query_api_url`. All routes
+take `Authorization: Bearer <token>`. The gateway verifies the JWT. Run ownership
+comes from the verified issuer and subject, and each run-specific route checks it.
+
+| Method and path | Request | Response |
+| --- | --- | --- |
+| POST /api/query/validate | JSON with integer `organism` and string `motif` | 200 with normalized `query`, or 400 with a `fields` map |
+| POST /api/query | Same JSON and a UUID `Idempotency-Key` header | 202 with `run_id` and `status_url` |
+| GET /api/query/{run_id} | | 200 with query, status, per-source progress, `can_resume`, and `can_download` |
+| POST /api/query/{run_id}/resume | | 202 with current run status |
+| POST /api/query/{run_id}/download?format=csv or parquet | | 200 with a signed URL when ready, or 202 while preparing CSV |
+| GET /api/query/{run_id}/download?format=csv or parquet | | Poll for the download; GET leaves the job unchanged |
+
+For example, send `{"organism":9606,"motif":"a cd"}` to validation and display
+the returned `{"query":{"organism":9606,"motif":"ACD"}}`. A researcher clicking
+**Run** confirms that query. Generate a key with `crypto.randomUUID()` for that
+click and keep it through network retries. Different criteria under the same
+key return 409. **Run again** gets a fresh key. Replaying submission preserves
+a paused run. Explicit resume continues it.
+
+Poll the returned status URL with backoff. Run status is `running`,
+`needs_resume`, or `complete`. Each entry in `sources` has `pages_completed`,
+`paused`, and `complete`. Progress counts pages in the current source attempt.
+A completed run enables Parquet download and on-demand CSV conversion. An
+early download returns 409. A ready response contains `status: ready`, `url`,
+and `expires_in_seconds: 300`. Treat the URL as a temporary bearer credential.
+When a CSV request returns 202, poll the GET download route. A failed conversion
+returns `needs_retry`; POST the download route again to retry. GET before the
+first CSV request returns `not_requested`.
+
+An unknown run and another user's run both return 404. Older, ownerless CLI runs
+remain accessible through the trusted pipeline tools. Account history can index
+the same run IDs. Local API tests use API Gateway event fixtures and Moto.

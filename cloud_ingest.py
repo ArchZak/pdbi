@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 from uuid import UUID
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -28,7 +29,7 @@ def initial(attempt=1, restarts=0):
 
 class Ingestion:
     def __init__(self, bucket, queue):
-        self.s3 = boto3.client("s3")
+        self.s3 = boto3.client("s3", config=Config(signature_version="s3v4"))
         self.sqs = boto3.client("sqs")
         self.bucket = bucket
         self.queue = queue
@@ -41,37 +42,56 @@ class Ingestion:
         return json.loads(obj["Body"].read()), obj["ETag"]
 
     def send(self, run, source, progress):
-        message = dict(run_id=run, source=source, attempt=progress["attempt"], page=progress["page"])
+        message = dict(run_id=run, source=source, attempt=progress["attempt"], page=progress["page"],
+                       generation=progress.get("generation", 0))
         self.sqs.send_message(QueueUrl=self.queue, MessageBody=json.dumps(message))
 
-    def submit(self, run, organism, motif):
+    def submit(self, run, organism, motif, *, owner=None):
         if organism <= 0:
             raise ValueError("Expected a positive taxonomy ID")
         query = dict(organism=organism, motif=normalize(motif))
         state = dict(query=query, sources={s: initial() for s in SOURCES}, complete=False)
+        if owner is not None:
+            state.update(owner=owner, dispatch_pending=True)
         try:
             self.s3.put_object(**self.object(run, "query.json"), Body=json.dumps(state), IfNoneMatch="*")
         except ClientError as exc:
             if status(exc) != 412:
                 raise
             state, _ = self.read_json(run, "query.json")
+            if state.get("owner") != owner:
+                raise PermissionError("Unknown run")
             if state["query"] != query:
                 raise ValueError("Run ID belongs to a different query") from exc
-        self.resume(run)
+        if owner is None:
+            self.resume(run)
+            return
+        # Recover a partial initial dispatch without invoking explicit resume.
+        state, etag = self.read_json(run, "query.json")
+        if state.get("dispatch_pending"):
+            for source, progress in state["sources"].items():
+                if not progress["paused"] and not progress["complete"] and progress["page"] == 0:
+                    self.send(run, source, progress)
+            state["dispatch_pending"] = False
+            self.s3.put_object(**self.object(run, "query.json"), Body=json.dumps(state), IfMatch=etag)
 
     def resume(self, run):
         state, etag = self.read_json(run, "query.json")
         if state["complete"]:
             return
         pending = [s for s in SOURCES if not state["sources"][s]["complete"]]
-        if any(state["sources"][s]["paused"] for s in pending):
+        if state.get("finalize_paused") or any(state["sources"][s]["paused"] for s in pending):
             for source in pending:
-                state["sources"][source].update(paused=False, restarts=0)
+                progress = state["sources"][source]
+                if progress["paused"]:
+                    progress.update(paused=False, restarts=0, generation=progress.get("generation", 0) + 1)
+            if state.pop("finalize_paused", False):
+                state["finalize_generation"] = state.get("finalize_generation", 0) + 1
             self.s3.put_object(**self.object(run, "query.json"), Body=json.dumps(state), IfMatch=etag)
         for source in pending:
             self.send(run, source, state["sources"][source])
         if not pending:
-            self.send(run, "finalize", initial())
+            self.send(run, "finalize", dict(initial(), generation=state.get("finalize_generation", 0)))
 
     def manifest(self, run, progress, organism):
         name = f'parts/pdb/{progress["attempt"]}/ids.json'
@@ -89,6 +109,14 @@ class Ingestion:
                 raise
             return self.read_json(run, name)[0]
 
+    def fetch_page(self, run, source, progress, query):
+        if source == "uniprot":
+            rows, cursor, release = live_sources.uniprot_page(query, progress["cursor"], progress["release"])
+        else:
+            ids = self.manifest(run, progress, query["organism"])
+            rows, cursor, release = live_sources.pdb_page(query, ids, progress["cursor"])
+        return rows, cursor, release
+
     def part(self, run, source, progress, query):
         key = self.object(run, f'parts/{source}/{progress["attempt"]}/{progress["page"]}.parquet')
         try:
@@ -96,11 +124,7 @@ class Ingestion:
         except ClientError as exc:
             if status(exc) != 404:
                 raise
-        if source == "uniprot":
-            rows, cursor, release = live_sources.uniprot_page(query, progress["cursor"], progress["release"])
-        else:
-            ids = self.manifest(run, progress, query["organism"])
-            rows, cursor, release = live_sources.pdb_page(query, ids, progress["cursor"])
+        rows, cursor, release = self.fetch_page(run, source, progress, query)
         if cursor is not None and cursor == progress["cursor"]:
             raise ValueError("Source cursor did not advance")
         continuation = dict(cursor=cursor, release=release, complete=cursor is None)
@@ -145,11 +169,13 @@ class Ingestion:
         if state["complete"]:
             return
         if source == "finalize":
+            if state.get("finalize_paused") or msg.get("generation", 0) != state.get("finalize_generation", 0):
+                return
             self.finalize(run, state)
             state["complete"] = True
         else:
             progress = state["sources"][source]
-            if progress["paused"]:
+            if progress["paused"] or msg.get("generation", 0) != progress.get("generation", 0):
                 return
             token = (msg["attempt"], msg["page"])
             current = (progress["attempt"], progress["page"])
@@ -157,7 +183,7 @@ class Ingestion:
                 # A prior invocation may have committed and died before sending its successor.
                 if progress["complete"]:
                     if all(p["complete"] for p in state["sources"].values()):
-                        self.send(run, "finalize", initial())
+                        self.send(run, "finalize", dict(initial(), generation=state.get("finalize_generation", 0)))
                 elif token == (current[0], current[1] - 1) or (token[0] == current[0] - 1 and current[1] == 0):
                     self.send(run, source, progress)
                 return
@@ -166,6 +192,7 @@ class Ingestion:
                 progress.update(following, page=progress["page"] + 1)
             except live_sources.ExpiredCursor:
                 fresh = initial(progress["attempt"] + 1, progress["restarts"] + 1)
+                fresh["generation"] = progress.get("generation", 0)
                 fresh["paused"] = fresh["restarts"] >= 3
                 state["sources"][source] = fresh
         # On contention, SQS retries the page and adopts the already persisted part.
@@ -176,7 +203,7 @@ class Ingestion:
             if not state["sources"][source]["complete"]:
                 self.send(run, source, state["sources"][source])
             elif all(p["complete"] for p in state["sources"].values()):
-                self.send(run, "finalize", initial())
+                self.send(run, "finalize", dict(initial(), generation=state.get("finalize_generation", 0)))
 
 
 def handler(event, context):

@@ -16,3 +16,6 @@ Read GLOSSARY.md and docs/adr before changing query semantics, recovery, or expo
 - A completed run owns immutable Parquet bytes. Local and cloud CSV downloads use the same converter and preserve row order and provenance.
 - The SQS export worker consumes a trusted run UUID. The account/API layer checks ownership before requesting an export or signing a download URL.
 - Validate infrastructure changes with `terraform -chdir=infra/pipeline fmt -check`, `terraform -chdir=infra/pipeline init -backend=false`, and `terraform -chdir=infra/pipeline validate`.
+- The browser and wizard share the authenticated routes in query_api.py. Validate drafts without creating runs. Bind submission retries to the verified owner and idempotency key. Preserve pauses on retries and check ownership before each run-specific action. Keep the README endpoint table in sync.
+
+Use `pixi run dev` for the loopback fixture UI. Keep wizard providers server-side and draft-only. The dev server substitutes fixture page retrieval and routes review, submission, and downloads through the shared query API.
