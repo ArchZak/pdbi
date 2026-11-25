@@ -1,11 +1,20 @@
 # pdbi
 CS1660 Project
 
+## Repository layout
+
+- `backend/` contains the API, ingestion and export workers, local server, wizard provider, tests, fixtures, and Lambda Dockerfile.
+- `frontend/` contains the browser workspace.
+- `infra/` contains the Terraform modules.
+- `docs/` contains the glossary and architecture decisions.
+
+Run the commands below from the repository root.
+
 ## Local browser workspace
 
 From the repository root run `pixi run dev`. The fixture workspace opens at
 http://127.0.0.1:8765. For headless use or a different port, run
-`pixi run -e test python dev_server.py --port 8766`.
+`pixi run -e test python backend/dev_server.py --port 8766`.
 
 Choose **Draft with wizard**, review taxon 9606 and motif ACD, then **Run query**.
 The manual form uses the same fields. Once both sources finish, download Parquet
@@ -21,7 +30,7 @@ the API verifies access. No AWS account or model key is required.
 
 The server loads `wizard_provider:draft_query` by default. To use your own
 Python function, set `PDBI_WIZARD_PROVIDER=my_module:draft_query` when starting
-the server. Put the module on the Python import path. The function accepts a
+the server. Place the module in `backend/` or on the Python import path. The function accepts a
 plain string and returns either `{"organism": 9606, "motif": "ACD"}` or
 `{"clarification": "Which organism should I search?"}`. The researcher can revise
 the prompt and draft again. Keep model credentials in the server environment.
@@ -67,15 +76,15 @@ The Terraform module in `infra/pipeline` provisions a private results bucket, ex
 queue, dead-letter queue, and Lambda consumer. Its inputs are an environment-specific
 `name` and the `image_uri` of the worker in regional ECR, pinned by digest.
 Build the image from this directory for `linux/amd64` using
-`docker buildx build --platform linux/amd64 --provenance=false --load -t pdbi-export .`.
+`docker buildx build -f backend/Dockerfile --platform linux/amd64 --provenance=false --load -t pdbi-export .`.
 The environment stack supplies its own AWS provider and state backend.
 
 An internal producer can publish a completed local run and request its CSV using
 the module outputs and the same UUID for both operations:
 
 ```sh
-pixi run python cloud_exports.py publish /tmp/pdbi-demo "$RESULT_BUCKET" "$RUN_ID"
-pixi run python cloud_exports.py request-csv "$CSV_QUEUE_URL" "$RUN_ID"
+pixi run python backend/cloud_exports.py publish /tmp/pdbi-demo "$RESULT_BUCKET" "$RUN_ID"
+pixi run python backend/cloud_exports.py request-csv "$CSV_QUEUE_URL" "$RUN_ID"
 ```
 
 The publisher needs permission to put and read the Parquet object and abort its
@@ -99,9 +108,9 @@ choose a fresh UUID for RUN_ID. The trusted submitter needs S3 read/write access
 to the run checkpoint and permission to send to the ingestion queue.
 
 ```sh
-pixi run python cloud_ingest.py submit "$RUN_ID" --organism 9606 --motif ACD
-pixi run python cloud_ingest.py status "$RUN_ID"
-pixi run python cloud_ingest.py resume "$RUN_ID"
+pixi run python backend/cloud_ingest.py submit "$RUN_ID" --organism 9606 --motif ACD
+pixi run python backend/cloud_ingest.py status "$RUN_ID"
+pixi run python backend/cloud_ingest.py resume "$RUN_ID"
 ```
 
 UniProt pages use the release header and cursor. RCSB searches by taxonomy

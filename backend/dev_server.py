@@ -19,7 +19,7 @@ import query_api
 from cloud_ingest import Ingestion
 from pipeline import normalize
 
-ROOT = Path(__file__).resolve().parent
+BACKEND = Path(__file__).resolve().parent
 ASSETS = {"/": ("index.html", "text/html"), "/app.css": ("app.css", "text/css"),
           "/app.js": ("app.js", "text/javascript")}
 RUN_PATH = re.compile(r"/api/query/([0-9a-f-]{36})(/resume|/download|/file)?")
@@ -27,7 +27,7 @@ RUN_PATH = re.compile(r"/api/query/([0-9a-f-]{36})(/resume|/download|/file)?")
 
 class FixtureIngestion(Ingestion):
     def fetch_page(self, run, source, progress, query):
-        pages = json.loads((ROOT / "fixtures" / f"{source}.json").read_text())
+        pages = json.loads((BACKEND / "fixtures" / f"{source}.json").read_text())
         index = int(progress["cursor"] or 0)
         rows = []
         for record in pages[index]:
@@ -100,7 +100,7 @@ class Handler(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         if self.command == "GET" and url.path in ASSETS:
             name, kind = ASSETS[url.path]
-            return self.reply(200, (ROOT / "frontend" / name).read_bytes(), kind + "; charset=utf-8")
+            return self.reply(200, (BACKEND.parent / "frontend" / name).read_bytes(), kind + "; charset=utf-8")
         try:
             size = int(self.headers.get("Content-Length", 0))
             if not 0 <= size <= 65536:

@@ -1,0 +1,10 @@
+**
+!pixi.toml
+!pixi.lock
+!backend/
+backend/**
+!backend/pipeline.py
+!backend/cloud_exports.py
+!backend/cloud_ingest.py
+!backend/live_sources.py
+!backend/query_api.py

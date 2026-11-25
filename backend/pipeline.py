@@ -89,7 +89,12 @@ def ingest(run, state, source):
     progress = state["sources"][source]
     if progress.get("complete"):
         return
-    data = (Path(state["fixtures"]) / f"{source}.json").read_bytes()
+    fixtures = Path(state["fixtures"])
+    bundled = Path(__file__).resolve().with_name("fixtures")
+    # Older checkpoints store the original absolute path to the bundled fixtures.
+    if fixtures == bundled.parent.parent / "fixtures" and not fixtures.exists():
+        fixtures = bundled
+    data = (fixtures / f"{source}.json").read_bytes()
     version = hashlib.sha256(data).hexdigest()
     pages = json.loads(data)
     if progress.get("version") != version:

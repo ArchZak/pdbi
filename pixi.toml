@@ -10,14 +10,14 @@ pyarrow = "==21.0.0"
 boto3 = ">=1.40,<2"
 
 [tasks]
-pipeline = "python pipeline.py"
+pipeline = "python backend/pipeline.py"
 
 [target.linux-64.pypi-dependencies]
 awslambdaric = ">=3,<4"
 
 [feature.test.tasks]
-dev = "python dev_server.py --open"
-test = "python -m unittest discover -s tests -v"
+dev = "python backend/dev_server.py --open"
+test = { cmd = "python -m unittest discover -s tests -v", cwd = "backend" }
 
 [feature.test.dependencies]
 moto = ">=5.1,<6"
